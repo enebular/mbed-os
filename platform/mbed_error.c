@@ -206,6 +206,9 @@ WEAK mbed_error_status_t mbed_error(mbed_error_status_t error_status, const char
 
     //On fatal errors print the error context/report
     ERROR_REPORT(&last_error_ctx, error_msg);
+#if defined(NDEBUG)
+    NVIC_SystemReset();
+#endif
     mbed_halt_system();
 
     return MBED_ERROR_FAILED_OPERATION;
