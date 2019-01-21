@@ -278,6 +278,9 @@ WEAK MBED_NORETURN mbed_error_status_t mbed_error(mbed_error_status_t error_stat
 
         //On fatal errors print the error context/report
         ERROR_REPORT(&last_error_ctx, error_msg, filename, line_number);
+#if defined(NDEBUG)
+    NVIC_SystemReset();
+#endif       
     }
 
 #if MBED_CONF_PLATFORM_CRASH_CAPTURE_ENABLED
