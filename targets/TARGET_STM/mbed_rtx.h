@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2017 ARM Limited
+ * Copyright (c) 2017-2019 ARM Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -118,6 +118,7 @@
 #define INITIAL_SP              (0x20050000UL)
 
 #elif (defined(TARGET_STM32F767ZI) ||\
+       defined(TARGET_STM32F767VI) ||\
        defined(TARGET_STM32F769NI))
 #define INITIAL_SP              (0x20080000UL)
 

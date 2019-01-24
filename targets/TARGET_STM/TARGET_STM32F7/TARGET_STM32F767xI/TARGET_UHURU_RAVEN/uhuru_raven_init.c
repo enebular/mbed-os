@@ -126,11 +126,6 @@ PIN_DATA pin_init_status[] = {
 
 void uhuru_raven_init(void)
 {
-
-#if (defined(TARGET_STM32F767VI))
-#define INITIAL_SP              (0x20080000UL)
-#endif
-
     for(int i= 0 ; pin_init_status[i].pin != NC ; i++){
         gpio_t gpio;
 
