@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
-* Copyright (c) 2006-2017 ARM Limited
+* Copyright (c) 2006-2019 ARM Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -94,6 +94,10 @@ void SystemInit(void)
     SCB->VTOR = RAMDTCM_BASE | VECT_TAB_OFFSET; /* Vector Table Relocation in Internal SRAM */
 #else
     SCB->VTOR = NVIC_FLASH_VECTOR_ADDRESS; /* Vector Table Relocation in Internal FLASH */
+#endif
+
+#if (defined(TARGET_STM32F767VI))
+#define INITIAL_SP              (0x20080000UL)
 #endif
 
 }
