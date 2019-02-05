@@ -199,6 +199,9 @@ mbed_error_status_t mbed_warning(mbed_error_status_t error_status, const char *e
 //Sets a fatal error, this function is marked WEAK to be able to override this for some tests
 WEAK mbed_error_status_t mbed_error(mbed_error_status_t error_status, const char *error_msg, unsigned int error_value, const char *filename, int line_number)
 {
+    if(error_status == MBED_MAKE_ERROR(MBED_MODULE_PLATFORM, MBED_ERROR_CODE_OUT_OF_MEMORY)) {
+        return MBED_ERROR_FAILED_OPERATION;
+    }
     //set the error reported and then halt the system
     if (MBED_SUCCESS != handle_error(error_status, error_value, filename, line_number, MBED_CALLER_ADDR())) {
         return MBED_ERROR_FAILED_OPERATION;
