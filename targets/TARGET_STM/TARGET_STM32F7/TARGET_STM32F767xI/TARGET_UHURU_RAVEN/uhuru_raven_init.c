@@ -34,7 +34,7 @@ typedef struct {
 } PIN_DATA;
 
 // pin init status
-PIN_DATA pin_init_status[] = {
+const PIN_DATA pin_init_status[] = {
     {PA_0 , PIN_INPUT , PullDown},   // PA_0
     {PA_1 , PIN_INPUT , PullDown},   // PA_1
     {PA_2 , PIN_INPUT , PullUp},     // PA_2

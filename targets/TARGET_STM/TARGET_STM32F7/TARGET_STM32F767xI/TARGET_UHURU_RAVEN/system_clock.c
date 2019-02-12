@@ -32,6 +32,9 @@
 #include "stm32f7xx.h"
 #include "nvic_addr.h"
 #include "mbed_error.h"
+#if TARGET_UHURU_RAVEN
+#include "uhuru_raven_init.h"
+#endif
 
 /*!< Uncomment the following line if you need to relocate your vector Table in
      Internal SRAM. */
@@ -94,6 +97,10 @@ void SystemInit(void)
     SCB->VTOR = RAMDTCM_BASE | VECT_TAB_OFFSET; /* Vector Table Relocation in Internal SRAM */
 #else
     SCB->VTOR = NVIC_FLASH_VECTOR_ADDRESS; /* Vector Table Relocation in Internal FLASH */
+#endif
+
+#if TARGET_UHURU_RAVEN
+    uhuru_raven_init();
 #endif
 
 }
