@@ -3025,10 +3025,9 @@
         "bootloader_supported": true
     },
     "UHURU_RAVEN": {
-        "inherits": ["FAMILY_STM32"],        
+        "inherits": ["FAMILY_STM32"],
         "core": "Cortex-M7FD",
         "extra_labels_add": ["STM32F7", "STM32F767", "STM32F767xI", "STM32F767VI"],
-        "components_add": ["SPIF"],
         "config": {
             "clock_source": {
                 "help": "Mask value : USE_PLL_HSE_EXTC | USE_PLL_HSE_XTAL | USE_PLL_HSI",
