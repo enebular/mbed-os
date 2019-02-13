@@ -126,7 +126,6 @@ const PIN_DATA pin_init_status[] = {
 
 void uhuru_raven_init(void)
 {
-
     for(int i= 0 ; pin_init_status[i].pin != NC ; i++){
         gpio_t gpio;
 
