@@ -62,7 +62,7 @@ static const uint8_t map_3gpp_errors[][2] =  {
 
 ATHandler::ATHandler(FileHandle *fh, EventQueue &queue, uint32_t timeout, const char *output_delimiter, uint16_t send_delay) :
     _nextATHandler(0),
-    _fileHandle(fh),
+    _fileHandle(NULL), // filehandle is set by set_file_handle()
     _queue(queue),
     _last_err(NSAPI_ERROR_OK),
     _last_3gpp_error(0),
@@ -74,7 +74,7 @@ ATHandler::ATHandler(FileHandle *fh, EventQueue &queue, uint32_t timeout, const 
     _last_response_stop(0),
     _oob_queued(false),
     _ref_count(1),
-    _is_fh_usable(true),
+    _is_fh_usable(false),
     _stop_tag(NULL),
     _delimiter(DEFAULT_DELIMITER),
     _prefix_matched(false),
@@ -90,11 +90,7 @@ ATHandler::ATHandler(FileHandle *fh, EventQueue &queue, uint32_t timeout, const 
 
     if (output_delimiter) {
         _output_delimiter = new char[strlen(output_delimiter) + 1];
-        if (!_output_delimiter) {
-            MBED_ASSERT(0);
-        } else {
-            memcpy(_output_delimiter, output_delimiter, strlen(output_delimiter) + 1);
-        }
+        memcpy(_output_delimiter, output_delimiter, strlen(output_delimiter) + 1);
     } else {
         _output_delimiter = NULL;
     }
@@ -116,8 +112,15 @@ void ATHandler::set_debug(bool debug_on)
     _debug_on = debug_on;
 }
 
+bool ATHandler::get_debug() const
+{
+    return _debug_on;
+}
+
 ATHandler::~ATHandler()
 {
+    set_file_handle(NULL);
+
     while (_oobs) {
         struct oob_t *oob = _oobs;
         _oobs = oob->next;
@@ -150,43 +153,55 @@ FileHandle *ATHandler::get_file_handle()
 
 void ATHandler::set_file_handle(FileHandle *fh)
 {
+    if (_fileHandle) {
+        set_is_filehandle_usable(false);
+    }
     _fileHandle = fh;
-    _fileHandle->set_blocking(false);
-    set_filehandle_sigio();
+    if (_fileHandle) {
+        set_is_filehandle_usable(true);
+    }
 }
 
 void ATHandler::set_is_filehandle_usable(bool usable)
 {
-    _is_fh_usable = usable;
+    if (_fileHandle) {
+        if (usable) {
+            _fileHandle->set_blocking(false);
+            _fileHandle->sigio(Callback<void()>(this, &ATHandler::event));
+        } else {
+            _fileHandle->set_blocking(true); // set back to default state
+            _fileHandle->sigio(NULL);
+        }
+        _is_fh_usable = usable;
+    }
 }
 
-nsapi_error_t ATHandler::set_urc_handler(const char *prefix, mbed::Callback<void()> callback)
+void ATHandler::set_urc_handler(const char *prefix, Callback<void()> callback)
 {
+    if (!callback) {
+        remove_urc_handler(prefix);
+        return;
+    }
+
     if (find_urc_handler(prefix)) {
         tr_warn("URC already added with prefix: %s", prefix);
-        return NSAPI_ERROR_OK;
+        return;
     }
 
     struct oob_t *oob = new struct oob_t;
-    if (!oob) {
-        return NSAPI_ERROR_NO_MEMORY;
-    } else {
-        size_t prefix_len = strlen(prefix);
-        if (prefix_len > _oob_string_max_length) {
-            _oob_string_max_length = prefix_len;
-            if (_oob_string_max_length > _max_resp_length) {
-                _max_resp_length = _oob_string_max_length;
-            }
+    size_t prefix_len = strlen(prefix);
+    if (prefix_len > _oob_string_max_length) {
+        _oob_string_max_length = prefix_len;
+        if (_oob_string_max_length > _max_resp_length) {
+            _max_resp_length = _oob_string_max_length;
         }
-
-        oob->prefix = prefix;
-        oob->prefix_len = prefix_len;
-        oob->cb = callback;
-        oob->next = _oobs;
-        _oobs = oob;
     }
 
-    return NSAPI_ERROR_OK;
+    oob->prefix = prefix;
+    oob->prefix_len = prefix_len;
+    oob->cb = callback;
+    oob->next = _oobs;
+    _oobs = oob;
 }
 
 void ATHandler::remove_urc_handler(const char *prefix)
@@ -307,11 +322,6 @@ void ATHandler::process_oob()
         tr_debug("AT OoB done");
     }
     unlock();
-}
-
-void ATHandler::set_filehandle_sigio()
-{
-    _fileHandle->sigio(mbed::Callback<void()>(this, &ATHandler::event));
 }
 
 void ATHandler::reset_buffer()
@@ -600,13 +610,11 @@ int32_t ATHandler::read_int()
     }
 
     char buff[BUFF_SIZE];
-    char *first_no_digit;
-
-    if (read_string(buff, (size_t)sizeof(buff)) == 0) {
+    if (read_string(buff, sizeof(buff)) == 0) {
         return -1;
     }
 
-    return std::strtol(buff, &first_no_digit, 10);
+    return std::strtol(buff, NULL, 10);
 }
 
 void ATHandler::set_delimiter(char delimiter)
@@ -1212,8 +1220,9 @@ void ATHandler::debug_print(const char *p, int len)
 #if MBED_CONF_MBED_TRACE_ENABLE
         mbed_cellular_trace::mutex_wait();
 #endif
+        char c;
         for (ssize_t i = 0; i < len; i++) {
-            char c = *p++;
+            c = *p++;
             if (!isprint(c)) {
                 if (c == '\r') {
                     debug("\n");

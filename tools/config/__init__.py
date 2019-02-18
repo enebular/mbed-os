@@ -44,11 +44,13 @@ try:
 except NameError:
     unicode = str
 PATH_OVERRIDES = set([
-    "target.bootloader_img"
+    "target.bootloader_img",
+    "target.delivery_dir"
 ])
 DELIVERY_OVERRIDES = set([
     "target.deliver_to_target",
     "target.deliver_artifacts",
+    "target.delivery_dir"
 ])
 ROM_OVERRIDES = set([
     # managed BL
@@ -543,7 +545,6 @@ class Config(object):
             # Check that we didn't already process this file
             if full_path in self.processed_configs:
                 continue
-            self.processed_configs[full_path] = True
             # Read the library configuration and add a "__full_config_path"
             # attribute to it
             try:
@@ -568,6 +569,12 @@ class Config(object):
                 raise ConfigException("; ".join(
                     self.format_validation_error(x, config_file)
                     for x in errors))
+            if "requires" in self.app_config_data:
+                if cfg["name"] not in self.app_config_data["requires"]:
+                    continue
+                self.app_config_data["requires"].extend(cfg.get("requires", []))
+
+            self.processed_configs[full_path] = True
 
             cfg["__config_path"] = full_path
 
@@ -600,8 +607,12 @@ class Config(object):
 
     def deliver_into(self):
         if self.target.deliver_to_target:
-            label_dir = "TARGET_{}".format(self.target.deliver_to_target)
-            target_delivery_dir = join(DELIVERY_DIR, label_dir)
+            if self.target.delivery_dir:
+                target_delivery_dir = self.target.delivery_dir
+            else:
+                label_dir = "TARGET_{}".format(self.target.deliver_to_target)
+                target_delivery_dir = join(DELIVERY_DIR, label_dir)
+
             if not exists(target_delivery_dir):
                 os.makedirs(target_delivery_dir)
 
@@ -1273,6 +1284,7 @@ class Config(object):
         """
         # Update configuration files until added features creates no changes
         prev_features = set()
+        prev_requires = set()
         while True:
             # Add/update the configuration with any .json files found while
             # scanning
@@ -1282,14 +1294,37 @@ class Config(object):
 
             # Add features while we find new ones
             features = set(self.get_features())
-            if features == prev_features:
+            requires = set(self.app_config_data.get("requires", []))
+            if features == prev_features and requires == prev_requires:
                 break
 
             resources.add_features(features)
 
             prev_features = features
+            prev_requires = requires
         self.validate_config()
-
+        missing_requirements = {}
+        for name, lib in self.lib_config_data.items():
+            for req in lib.get("requires", []):
+                if req not in self.lib_config_data:
+                    missing_requirements.setdefault(name, [])
+                    missing_requirements[name].append(req)
+        if missing_requirements:
+            message = "; ".join(
+                "library '{}' requires {} which is not present".format(
+                    name, ", ".join("'{}'".format(i) for i in missing)
+                )
+                for name, missing in missing_requirements.items()
+            )
+            raise ConfigException(message)
+        all_json_paths = [
+            cfg["__config_path"] for cfg in self.lib_config_data.values()
+        ]
+        included_json_files = [
+            ref for ref in resources.get_file_refs(FileType.JSON)
+            if abspath(ref.path) in all_json_paths
+        ]
+        resources.filter_by_libraries(included_json_files)
         if  (hasattr(self.target, "release_versions") and
              "5" not in self.target.release_versions and
              "rtos" in self.lib_config_data):

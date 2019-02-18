@@ -58,6 +58,7 @@ ESP8266Interface::ESP8266Interface()
       _if_blocking(true),
       _if_connected(_cmutex),
       _initialized(false),
+      _connect_retval(NSAPI_ERROR_OK),
       _conn_stat(NSAPI_STATUS_DISCONNECTED),
       _conn_stat_cb(NULL),
       _global_event_queue(NULL),
@@ -70,7 +71,7 @@ ESP8266Interface::ESP8266Interface()
 
     _esp.sigio(this, &ESP8266Interface::event);
     _esp.set_timeout();
-    _esp.attach(this, &ESP8266Interface::update_conn_state_cb);
+    _esp.attach(this, &ESP8266Interface::refresh_conn_state_cb);
 
     for (int i = 0; i < ESP8266_SOCKET_COUNT; i++) {
         _sock_i[i].open = false;
@@ -101,7 +102,7 @@ ESP8266Interface::ESP8266Interface(PinName tx, PinName rx, bool debug, PinName r
 
     _esp.sigio(this, &ESP8266Interface::event);
     _esp.set_timeout();
-    _esp.attach(this, &ESP8266Interface::update_conn_state_cb);
+    _esp.attach(this, &ESP8266Interface::refresh_conn_state_cb);
 
     for (int i = 0; i < ESP8266_SOCKET_COUNT; i++) {
         _sock_i[i].open = false;
@@ -187,8 +188,12 @@ void ESP8266Interface::_connect_async()
         _cmutex.unlock();
         return;
     }
-
-    if (_esp.connect(ap_ssid, ap_pass) != NSAPI_ERROR_OK) {
+    _connect_retval = _esp.connect(ap_ssid, ap_pass);
+    if (_connect_retval == NSAPI_ERROR_OK || _connect_retval == NSAPI_ERROR_AUTH_FAILURE
+            || _connect_retval == NSAPI_ERROR_NO_SSID) {
+        _connect_event_id = 0;
+        _if_connected.notify_all();
+    } else {
         // Postpone to give other stuff time to run
         _connect_event_id = _global_event_queue->call_in(ESP8266_CONNECT_TIMEOUT, callback(this, &ESP8266Interface::_connect_async));
 
@@ -196,9 +201,6 @@ void ESP8266Interface::_connect_async()
             MBED_ERROR(MBED_MAKE_ERROR(MBED_MODULE_DRIVER, MBED_ERROR_CODE_ENOMEM), \
                             "_connect_async(): unable to add event to queue");
         }
-    } else {
-        _connect_event_id = 0;
-        _if_connected.notify_all();
     }
     _cmutex.unlock();
 }
@@ -235,6 +237,7 @@ int ESP8266Interface::connect()
 
     _cmutex.lock();
 
+    _connect_retval = NSAPI_ERROR_NO_CONNECTION;
     MBED_ASSERT(!_connect_event_id);
     _connect_event_id = _global_event_queue->call(callback(this, &ESP8266Interface::_connect_async));
 
@@ -243,13 +246,14 @@ int ESP8266Interface::connect()
                         "connect(): unable to add event to queue");
     }
 
-    while (_if_blocking && (_conn_status_to_error() != NSAPI_ERROR_IS_CONNECTED)) {
+    while (_if_blocking && (_conn_status_to_error() != NSAPI_ERROR_IS_CONNECTED)
+            && (_connect_retval == NSAPI_ERROR_NO_CONNECTION)) {
         _if_connected.wait();
     }
 
     _cmutex.unlock();
 
-    return NSAPI_ERROR_OK;
+    return _connect_retval;
 }
 
 int ESP8266Interface::set_credentials(const char *ssid, const char *pass, nsapi_security_t security)
@@ -400,12 +404,7 @@ bool ESP8266Interface::_get_firmware_ok()
 nsapi_error_t ESP8266Interface::_init(void)
 {
     if (!_initialized) {
-        _hw_reset();
-
-        if (!_esp.at_available()) {
-            return NSAPI_ERROR_DEVICE_ERROR;
-        }
-        if (!_esp.reset()) {
+        if (_reset() != NSAPI_ERROR_OK) {
             return NSAPI_ERROR_DEVICE_ERROR;
         }
         if (!_esp.echo_off()) {
@@ -432,7 +431,7 @@ nsapi_error_t ESP8266Interface::_init(void)
     return NSAPI_ERROR_OK;
 }
 
-void ESP8266Interface::_hw_reset()
+nsapi_error_t ESP8266Interface::_reset()
 {
     if (_rst_pin.is_connected()) {
         _rst_pin.rst_assert();
@@ -441,7 +440,17 @@ void ESP8266Interface::_hw_reset()
         wait_ms(2); // Documentation says 200 us should have been enough, but experimentation shows that 1ms was not enough
         _esp.flush();
         _rst_pin.rst_deassert();
+    } else {
+        _esp.flush();
+        if (!_esp.at_available()) {
+            return NSAPI_ERROR_DEVICE_ERROR;
+        }
+        if (!_esp.reset()) {
+            return NSAPI_ERROR_DEVICE_ERROR;
+        }
     }
+
+    return _esp.at_available() ? NSAPI_ERROR_OK : NSAPI_ERROR_DEVICE_ERROR;
 }
 
 struct esp8266_socket {
@@ -573,6 +582,10 @@ int ESP8266Interface::socket_send(void *handle, const void *data, unsigned size)
         return NSAPI_ERROR_NO_SOCKET;
     }
 
+    if (!_sock_i[socket->id].open) {
+        return NSAPI_ERROR_CONNECTION_LOST;
+    }
+
     if (!size) {
         // Firmware limitation
         return socket->proto == NSAPI_TCP ? 0 : NSAPI_ERROR_UNSUPPORTED;
@@ -598,6 +611,10 @@ int ESP8266Interface::socket_recv(void *handle, void *data, unsigned size)
 
     if (!socket) {
         return NSAPI_ERROR_NO_SOCKET;
+    }
+
+    if (!_sock_i[socket->id].open) {
+        return NSAPI_ERROR_CONNECTION_LOST;
     }
 
     int32_t recv;
@@ -764,14 +781,10 @@ WiFiInterface *WiFiInterface::get_default_instance()
 
 #endif
 
-void ESP8266Interface::update_conn_state_cb()
+void ESP8266Interface::refresh_conn_state_cb()
 {
     nsapi_connection_status_t prev_stat = _conn_stat;
     _conn_stat = _esp.connection_status();
-
-    if (prev_stat == _conn_stat) {
-        return;
-    }
 
     switch (_conn_stat) {
         // Doesn't require changes
@@ -787,7 +800,17 @@ void ESP8266Interface::update_conn_state_cb()
         default:
             _initialized = false;
             _conn_stat = NSAPI_STATUS_DISCONNECTED;
+            for (int i = 0; i < ESP8266_SOCKET_COUNT; i++) {
+                _sock_i[i].open = false;
+                _sock_i[i].sport = 0;
+            }
     }
+
+    if (prev_stat == _conn_stat) {
+        return;
+    }
+
+    tr_debug("refresh_conn_state_cb(): changed to %d", _conn_stat);
 
     // Inform upper layers
     if (_conn_stat_cb) {

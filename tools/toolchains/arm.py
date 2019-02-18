@@ -404,8 +404,8 @@ class ARMC6(ARM_STD):
             "Cortex-M4F": "cortex-m4",
             "Cortex-M7F": "cortex-m7",
             "Cortex-M7FD": "cortex-m7",
-            "Cortex-M33": "cortex-m33+no_dsp+no_fp",
-            "Cortex-M33F": "cortex-m33+no_dsp",
+            "Cortex-M33": "cortex-m33+nodsp",
+            "Cortex-M33F": "cortex-m33+nodsp",
             "Cortex-M33FE": "cortex-m33"}.get(core, core)
 
         cpu = cpu.lower()
@@ -430,6 +430,7 @@ class ARMC6(ARM_STD):
             self.flags['common'].append("-mfloat-abi=hard")
             self.flags['ld'].append("--cpu=cortex-m33.no_dsp")
         elif core == "Cortex-M33":
+            self.flags['common'].append("-mfpu=none")
             self.flags['ld'].append("--cpu=cortex-m33.no_dsp.no_fp")
         else:
             self.flags['ld'].append("--cpu=%s" % cpu)
