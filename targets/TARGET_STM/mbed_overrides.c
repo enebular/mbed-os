@@ -1,5 +1,5 @@
 /* mbed Microcontroller Library
- * Copyright (c) 2017, STMicroelectronics
+ * Copyright (c) 2017-2019, STMicroelectronics
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,9 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "cmsis.h"
-#if TARGET_UHURU_ERB
-#include "uhuru_erb_init.h"
-#endif
 
 int mbed_sdk_inited = 0;
 
@@ -72,10 +69,6 @@ void mbed_sdk_init()
     }
 #endif /* ! MBED_CONF_TARGET_LSE_AVAILABLE */
 #endif /* DEVICE_RTC */
-
-#if TARGET_UHURU_ERB
-    uhuru_erb_init();
-#endif
 
     mbed_sdk_inited = 1;
 }
