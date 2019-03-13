@@ -62,11 +62,11 @@
              "SPI_CLK":  "PA_5",
              "SPI_CS":   "PB_12"
        },
-       "UHURU_RAVEN": {
-           "SPI_MOSI": "PE_14",
-           "SPI_MISO": "PE_13",
-           "SPI_CLK":  "PE_12",
-           "SPI_CS":   "PE_11"
+         "UHURU_RAVEN": {
+             "SPI_MOSI": "PE_14",
+             "SPI_MISO": "PE_13",
+             "SPI_CLK":  "PE_12",
+             "SPI_CS":   "PE_11"
        }
     }
 }
