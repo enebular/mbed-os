@@ -1259,6 +1259,9 @@ extern "C" void exit(int return_code)
     }
 #endif
     if (return_code) {
+#if defined(NDEBUG)
+        NVIC_SystemReset();
+#endif
         mbed_die();
     }
 
